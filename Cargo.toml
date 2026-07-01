@@ -1,0 +1,3 @@
+[workspace]
+members = ["kero_engine", "kero_web"]
+resolver = "3"

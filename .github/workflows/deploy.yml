@@ -1,0 +1,55 @@
+name: Deploy Kero-Kero Framework
+
+on:
+  push:
+    branches: ["main"]
+  schedule:
+    - cron: "0 3 * * 0" # Automated update execution triggered every Sunday at 03:00 UTC
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust Stable Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Setup Trunk Compiler Tools
+        run: |
+          wget -qO- https://github.com/trunk-rs/trunk/releases/latest/download/trunk-x86_64-unknown-linux-gnu.tar.gz | tar -xzf-
+          sudo mv trunk /usr/local/bin/
+          cargo install wasm-bindgen-cli
+
+      - name: Cache Cargo Dependencies Matrix
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-cache-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: 🛰️ Run ANEEL Snapshot Pipeline
+        run: cargo run --bin download_tariffs
+
+      - name: 🏗️ Execute Production Trunk Compile Engine
+        run: trunk build --release --public-url "/kero-kero/"
+
+      - name: Upload Pages Asset Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: kero_web/dist
+
+      - name: Deploy Compiled Layout to GitHub Pages
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,78 @@
+graph TD
+    %% --- STYLE DEFINITIONS ---
+    classDef input fill:#e74c3c,stroke:#c0392b,color:white,font-weight:bold;
+    classDef domain fill:#f39c12,stroke:#d35400,color:white,font-weight:bold;
+    classDef engine fill:#3498db,stroke:#2980b9,color:white,font-weight:bold;
+    classDef output fill:#2ecc71,stroke:#27ae60,color:white,font-weight:bold;
+
+    %% --- SECTION: PRESENTATION LAYER INPUT ---
+    subgraph Presentation ["Presentation Layer (UI Form / CLI)"]
+        UI_Form["User Input Form Data"]:::input
+    end
+
+    %% --- SECTION: DOMAIN STRUTCS (DATA MODELS) ---
+    subgraph Models ["kero_engine::Models (Type-Safe DTOs)"]
+        direction TB
+        
+        %% Phase Connection Enum
+        E_Phase["enum PhaseConnection<br/>• Monofasico (30 kWh)<br/>• Bifasico (50 kWh)<br/>• Trifasico (100 kWh)"]:::domain
+        
+        %% Simulation Input Struct
+        S_Input["struct SimulationInput<br/>• location_state: String<br/>• average_bill_reais: Decimal<br/>• system_capacity_kwp: Decimal<br/>• total_investment_reais: Decimal<br/>• phase_type: PhaseConnection"]:::domain
+        
+        E_Phase -->|Injected into| S_Input
+    end
+
+    %% --- SECTION: THE CALCULATION CORE ---
+    subgraph CalculationCore ["kero_engine::Core (Processing Logic)"]
+        direction TB
+        
+        %% Deduce Step
+        Step1["1. Parse Input & Deduce Consumption<br/>• Lookup state base electricity tariff (R$/kWh)<br/>• Convert R$ Bill back to monthly baseline kWh"]:::engine
+        
+        %% Reference Datastores
+        subgraph Matrices ["Internal Matrices / Caches"]
+            M_Tariff["ANEEL Tariff Data Matrix<br/>(TE, TUSD, Fio B per State)"]:::engine
+            M_HSP["CRESESB Irradiation Data<br/>(Daily Sun Hours per State)"]:::engine
+        end
+        
+        %% Strategy Injection
+        Trait_Tax["trait TaxStrategy<br/>fn get_fio_b_charge_percentage(year)"]:::engine
+        Struct_Law["struct MarcoLegalGeral<br/>• 2026: 60% Fio B<br/>• 2027: 75% Fio B<br/>• 2028+: 90% Fio B"]:::engine
+        Struct_Law -->|Implements| Trait_Tax
+        
+        %% The 25-Year Loop Engine
+        subgraph SimLoop ["25-Year Cash Flow Projection Loop"]
+            Step2["For each year (1 to 25):<br/>• Apply Panel Degradation (-0.5% / year)<br/>• Compute: Gen kWh = kWp × HSP × 30 × 12 × Efficiency<br/>• Fetch progressive Fio B charge % from Strategy<br/>• Calculate Gross Savings vs Fio B Retaliation Costs<br/>• Track Net Savings & update Cumulative Cash Flow"]:::engine
+        end
+    end
+
+    %% --- SECTION: OUTPUT DATA MODELS ---
+    subgraph Results ["kero_engine::Results (Output Artifacts)"]
+        direction TB
+        
+        S_Year["struct YearlyProjection<br/>• year: u32<br/>• energy_generated_kwh: Decimal<br/>• gross_savings_reais: Decimal<br/>• fio_b_cost_reais: Decimal<br/>• net_savings_reais: Decimal<br/>• cumulative_cash_flow_reais: Decimal"]:::output
+        
+        S_Result["struct SimulationResult<br/>• payback_years: Decimal<br/>• total_25yr_savings_reais: Decimal<br/>• annual_table: Vec&lt;YearlyProjection&gt;"]:::output
+        
+        S_Year -->|Array stored inside| S_Result
+    end
+
+    %% --- PIPELINE CONNECTIONS (THE FLOW) ---
+    UI_Form -->|Validates & Ingests into| S_Input
+    
+    S_Input --> Step1
+    M_Tariff -.->|Provides values for| Step1
+    M_HSP -.->|Provides values for| SimLoop
+    Trait_Tax -.->|Enforces rule boundaries on| SimLoop
+    
+    Step1 -->|Feeds baseline data to| SimLoop
+    SimLoop -->|Aggregates loops into| S_Result
+
+    %% --- INTERFACE DISPLAY ---
+    subgraph ClientView ["Client View UI Display"]
+        Render_Chart["Interactive Financial Line Chart<br/>(Identifies Payback cross point)"]:::output
+        Render_Table["Annual ROI Breakdown Matrix Table"]:::output
+    end
+
+    S_Result -->|Compiled to WASM & Rendered by Leptos| ClientView
