@@ -18,17 +18,22 @@ pub async fn fetch_residential_tariffs(
 
 #[cfg(not(target_arch = "wasm32"))]
 async fn fetch_residential_tariffs_native(
-    _state_filter: &str,
+    state_filter: &str,
 ) -> Result<Vec<AneelTariffRecord>, String> {
-    let _ = _state_filter; // unused, intentionally ignored
     let url = "https://dadosabertos.aneel.gov.br/api/3/action/datastore_search";
     let resource_id = "fcf2906c-7c32-4b9b-a637-054e7a5234f4";
+
+    let filters = serde_json::json!({"SigUF": state_filter}).to_string();
 
     let client = reqwest::Client::new();
 
     let response = client
         .get(url)
-        .query(&[("resource_id", resource_id), ("limit", "10000")])
+        .query(&[
+            ("resource_id", resource_id),
+            ("limit", "10000"),
+            ("filters", &filters),
+        ])
         .send()
         .await
         .map_err(|e| format!("Network error connecting to ANEEL: {}", e))?;
