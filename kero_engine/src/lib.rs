@@ -1,9 +1,13 @@
 use std::str::FromStr;
 
+use chrono::Datelike;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
+use crate::hsp_request::get_hsp_by_state;
+
 pub mod aneel_api;
+pub mod hsp_request;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PhaseConnection {
@@ -61,6 +65,7 @@ impl TaxStrategy for GeneralLegalFramework {
 pub async fn calculate_solar_roi(input: SimulationInput) -> Result<SimulationResult, String> {
     // 1. Fetch reference solar and tariff data for the requested state
     let real_data = aneel_api::get_unified_state_tariff(&input.location_state).await?;
+    let current_year = chrono::Utc::now().year() as u32;
 
     // REMOVED: No divider needed! ANEEL open data residential values are already in R$/kWh
     let mwh_to_kwh_divider = Decimal::from(1000);
@@ -87,7 +92,6 @@ pub async fn calculate_solar_roi(input: SimulationInput) -> Result<SimulationRes
     let mut total_25yr_savings = Decimal::ZERO;
     let mut payback_years = Decimal::from(-1);
 
-    let current_year = 2026;
     let base_panel_efficiency = Decimal::ONE;
     let degradation_factor = Decimal::from_str("0.005").unwrap();
 
@@ -98,11 +102,11 @@ pub async fn calculate_solar_roi(input: SimulationInput) -> Result<SimulationRes
         // Calculate efficiency degradation
         let efficiency_modifier =
             base_panel_efficiency - (degradation_factor * Decimal::from(i - 1));
-        let solar_irradiation_hsp = Decimal::from_str("4.5").unwrap();
+        let solar_irradiation_hsp = get_hsp_by_state(&input.location_state);
 
         // Theoretical annual solar production
         let potential_yearly_generation_kwh = input.system_capacity_kwp
-            * solar_irradiation_hsp
+            * solar_irradiation_hsp.await
             * Decimal::from(30)
             * Decimal::from(12)
             * efficiency_modifier;
