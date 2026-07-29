@@ -25,12 +25,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Err(e) => eprintln!("Failed to fetch tariffs for {}: {}", state, e),
         }
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     }
     let json_data = serde_json::to_string_pretty(&tariff_map)?;
 
-    let path = "kero_web/public/aneel_tariffs.json";
-    std::fs::create_dir_all("kero_web/public")?;
+    let path = "assets/aneel_tariffs.json";
+    std::fs::create_dir_all("assets")?;
 
     let mut file = File::create(path)?;
     file.write_all(json_data.as_bytes())?;

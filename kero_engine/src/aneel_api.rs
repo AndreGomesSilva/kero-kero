@@ -23,25 +23,25 @@ async fn fetch_residential_tariffs_native(
     let url = "https://dadosabertos.aneel.gov.br/api/3/action/datastore_search";
     let resource_id = "fcf2906c-7c32-4b9b-a637-054e7a5234f4";
 
-    let filters = serde_json::json!({"SigUF": state_filter}).to_string();
-
     let client = reqwest::Client::new();
 
     let response = client
         .get(url)
-        .query(&[
-            ("resource_id", resource_id),
-            ("limit", "10000"),
-            ("filters", &filters),
-        ])
+        .query(&[("resource_id", resource_id), ("limit", "10000")])
         .send()
         .await
         .map_err(|e| format!("Network error connecting to ANEEL: {}", e))?;
 
-    let api_data = response
-        .json::<AneelApiResponse>()
+    // Capture raw response body for debugging
+    let resp_text = response
+        .text()
         .await
-        .map_err(|e| format!("Failed to parse ANEEL JSON response: {}", e))?;
+        .map_err(|e| format!("Network error connecting to ANEEL: {}", e))?;
+    // Attempt to parse into expected structure
+    let api_data: AneelApiResponse = serde_json::from_str(&resp_text).map_err(|parse_err| {
+        eprintln!("Failed to parse JSON response. Raw body:\n{}", &resp_text);
+        format!("Failed to get response text: {}", parse_err)
+    })?;
 
     if !api_data.success {
         return Err("ANEEL API flagged the internal query operation as failed".to_string());
@@ -71,7 +71,7 @@ async fn fetch_residential_tariffs_wasm(
     use web_sys::window;
 
     // Use statically included JSON snapshot
-    const ANEEL_TARIFFS_JSON: &str = include_str!("../kero_web/public/aneel_tariffs.json");
+    const ANEEL_TARIFFS_JSON: &str = include_str!("../../assets/aneel_tariffs.json");
     let all_states_matrix: HashMap<String, Vec<AneelTariffRecord>> =
         serde_json::from_str(ANEEL_TARIFFS_JSON)
             .map_err(|e| format!("Failed to parse embedded JSON payload {:?}", e))?;
