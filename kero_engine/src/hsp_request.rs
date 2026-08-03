@@ -5,7 +5,6 @@ use std::str::FromStr;
 
 #[derive(Debug, Deserialize)]
 struct NasaParameter {
-    // The NASA ALLSKY_SFC_SW_DWN parameter provides the average daily annual/monthly irradiation in kWh/m²/day (HSP).
     #[serde(rename = "ALLSKY_SFC_SW_DWN")]
     allsky_sw_dwn: Option<HashMap<String, f64>>,
 }
@@ -53,6 +52,7 @@ fn get_coordenates_by_state(state: &str) -> (f64, f64) {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub async fn get_hsp_by_state(state: &str) -> Decimal {
     let (lat, lon) = get_coordenates_by_state(state);
 
@@ -67,7 +67,6 @@ pub async fn get_hsp_by_state(state: &str) -> Decimal {
 
     if let Ok(res) = response {
         if let Ok(nasa_data) = res.json::<NasaResponse>().await {
-            // The 'allsky_sw_dwn' HashMap contains the keys "JAN", "FEB" ... "DEC" and "ANN" (annual average)
             if let Some(mesure) = nasa_data.properties.parameter.allsky_sw_dwn {
                 if let Some(&hsp_ann) = mesure.get("ANN") {
                     if hsp_ann > 0.0 {
@@ -76,6 +75,31 @@ pub async fn get_hsp_by_state(state: &str) -> Decimal {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    get_hsp_fallback(state)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub async fn get_hsp_by_state(state: &str) -> Decimal {
+    use gloo_net::http::Request;
+
+    let (lat, lon) = get_coordenates_by_state(state);
+
+    let url = format!(
+        "https://power.larc.nasa.gov/api/temporal/climatology/point?parameters=ALLSKY_SFC_SW_DWN&community=RE&longitude={:.2}&latitude={:.2}&format=JSON",
+        lon, lat
+    );
+
+    let resp = Request::get(&url).send().await.unwrap();
+    let nasa_data: NasaResponse = resp.json().await.unwrap();
+
+    if let Some(mesure) = nasa_data.properties.parameter.allsky_sw_dwn {
+        if let Some(&hsp_ann) = mesure.get("ANN") {
+            if hsp_ann > 0.0 {
+                return Decimal::from_str(&format!("{:.2}", hsp_ann)).unwrap();
             }
         }
     }

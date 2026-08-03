@@ -7,10 +7,13 @@ edition = "2024"
 rust_decimal = { version = "1.42", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.150"
-chrono = { version = "0.4", features = ["serde"]}
+chrono = { version = "0.4", features = ["serde"] }
+
+# Optional dependencies used only on specific targets
+reqwest = { version = "0.11", features = ["json"], optional = true }
+gloo-net = { version = "0.2", optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-reqwest = { version = "0.11", features = ["json"] }
 tokio = { version = "1.35", features = ["macros", "rt-multi-thread"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -21,4 +24,3 @@ serde-wasm-bindgen = "0.4"
 
 [dev-dependencies]
 tokio = { version = "1.35", features = ["macros", "rt-multi-thread"] }
-reqwest = { version = "0.11", features = ["json"] }
