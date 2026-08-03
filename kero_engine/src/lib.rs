@@ -4,6 +4,8 @@ use chrono::Datelike;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
+pub use rust_decimal::Decimal;
+
 use crate::hsp_request::get_hsp_by_state;
 
 pub mod aneel_api;
@@ -114,11 +116,13 @@ pub async fn calculate_solar_roi(input: SimulationInput) -> Result<SimulationRes
         // Calculate efficiency degradation
         let efficiency_modifier =
             base_panel_efficiency - (degradation_factor * Decimal::from(i - 1));
-        let solar_irradiation_hsp_future = get_hsp_by_state(&input.location_state);
+
+        // Fetch solar irradiation data asynchronously
+        let solar_irradiation_hsp = get_hsp_by_state(&input.location_state).await;
 
         // Theoretical annual solar production
         let potential_yearly_generation_kwh = input.system_capacity_kwp
-            * solar_irradiation_hsp_future.await
+            * solar_irradiation_hsp
             * Decimal::from(30)
             * Decimal::from(12)
             * efficiency_modifier;
