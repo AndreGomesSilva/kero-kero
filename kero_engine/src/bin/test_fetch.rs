@@ -1,4 +1,4 @@
-use crate::aneel_api::fetch_residential_tariffs;
+use kero_engine::aneel_api::fetch_residential_tariffs;
 
 #[tokio::main]
 async fn main() {
