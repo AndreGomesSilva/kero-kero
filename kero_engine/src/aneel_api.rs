@@ -73,7 +73,7 @@ async fn fetch_residential_tariffs_wasm(
     // Use statically included JSON snapshot
     const ANEEL_TARIFFS_JSON: &str = include_str!("../../assets/aneel_tariffs.json");
     let all_states_matrix: HashMap<String, Vec<AneelTariffRecord>> =
-        serde_json::from_str(ANEEL_TARIFFS_JSON)
+        serde_json::from_str(ANELEL_TARIFFS_JSON)
             .map_err(|e| format!("Failed to parse embedded JSON payload {:?}", e))?;
 
     if let Some(records) = all_states_matrix.get(state_filter) {
