@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 pub mod aneel_api;
 pub mod hsp_request;
 
+// Import the HSP request function so it can be used in calculations.
+use crate::hsp_request::get_hsp_by_state;
+
 /// Represents the type of electrical phase connection for a solar installation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PhaseConnection {
