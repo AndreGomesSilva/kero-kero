@@ -1,7 +1,8 @@
-use kero_engine::aneel_api::fetch_residential_tariffs;
+use crate::aneel_api::fetch_residential_tariffs;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
+use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -25,8 +26,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Err(e) => eprintln!("Failed to fetch tariffs for {}: {}", state, e),
         }
-        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+        tokio::time::sleep(Duration::from_millis(1000)).await;
     }
+
     let json_data = serde_json::to_string_pretty(&tariff_map)?;
 
     let path = "assets/aneel_tariffs.json";
