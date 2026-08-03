@@ -9,6 +9,7 @@ use crate::hsp_request::get_hsp_by_state;
 pub mod aneel_api;
 pub mod hsp_request;
 
+/// Represents the type of electrical phase connection for a solar installation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PhaseConnection {
     Monophasic, // minimum fee: 30 kWh
@@ -16,6 +17,7 @@ pub enum PhaseConnection {
     Triphasic,  // minimum fee: 100 kWh
 }
 
+/// Input data for a solar ROI simulation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimulationInput {
     pub location_state: String,
@@ -25,6 +27,7 @@ pub struct SimulationInput {
     pub phase_type: PhaseConnection,
 }
 
+/// Year‑by‑year projection of the simulation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YearlyProjection {
     pub year: u32,
@@ -35,6 +38,7 @@ pub struct YearlyProjection {
     pub cumulative_cash_flow_reais: Decimal,
 }
 
+/// Result of a complete simulation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimulationResult {
     pub payback_years: Decimal,
@@ -46,31 +50,39 @@ pub trait TaxStrategy {
     fn get_distribution_charge_percentage(&self, year: u32) -> Decimal;
 }
 
+/// Legal framework for distribution charges (Fio B).
 pub struct GeneralLegalFramework;
 
 impl TaxStrategy for GeneralLegalFramework {
+    /// Returns the Fio B charge percentage for a given year.
+    ///
+    /// The values are expressed as decimals (e.g. 0.15 = 15 %).
     fn get_distribution_charge_percentage(&self, year: u32) -> Decimal {
         match year {
-            2023 => Decimal::from_str_radix("0.15", 10).unwrap(),
-            2024 => Decimal::from_str_radix("0.30", 10).unwrap(),
-            2025 => Decimal::from_str_radix("0.45", 10).unwrap(),
-            2026 => Decimal::from_str_radix("0.60", 10).unwrap(),
-            2027 => Decimal::from_str_radix("0.75", 10).unwrap(),
-            2028 => Decimal::from_str_radix("0.90", 10).unwrap(),
-            _ => Decimal::from_str_radix("1", 10).unwrap(),
+            2023 => Decimal::from_str("0.15").unwrap(),
+            2024 => Decimal::from_str("0.30").unwrap(),
+            2025 => Decimal::from_str("0.45").unwrap(),
+            2026 => Decimal::from_str("0.60").unwrap(),
+            2027 => Decimal::from_str("0.75").unwrap(),
+            2028 => Decimal::from_str("0.90").unwrap(),
+            _ => Decimal::ONE,
         }
     }
 }
 
+/// Calculates the solar ROI for a given input.
+///
+/// The function performs a 25‑year cash‑flow projection, taking into account
+/// panel degradation, irradiation data (HSP), tariff averages and legal
+/// distribution charges.
 pub async fn calculate_solar_roi(input: SimulationInput) -> Result<SimulationResult, String> {
     // 1. Fetch reference solar and tariff data for the requested state
     let real_data = aneel_api::get_unified_state_tariff(&input.location_state).await?;
     let current_year = chrono::Utc::now().year() as u32;
 
-    // REMOVED: No divider needed! ANEEL open data residential values are already in R$/kWh
-    let mwh_to_kwh_divider = Decimal::from(1000);
-    let energy_tariff = real_data.average_energy_tariff / mwh_to_kwh_divider;
-    let distribution_tariff = real_data.average_distribution_tariff / mwh_to_kwh_divider;
+    // ANEEL open‑data values are already in R$/kWh, no divider needed.
+    let energy_tariff = real_data.average_energy_tariff;
+    let distribution_tariff = real_data.average_distribution_tariff;
     let total_tariff = energy_tariff + distribution_tariff;
 
     // 2. Identify the availability fee (minimum grid baseline in kWh) based on phase type
@@ -88,25 +100,25 @@ pub async fn calculate_solar_roi(input: SimulationInput) -> Result<SimulationRes
     // 4. Initialize the simulation parameters
     let legal_framework = GeneralLegalFramework;
     let mut annual_table = Vec::new();
-    let mut cumulative_cash_flow = -input.total_investment_reais; // Year 0 initial cash drop
+    let mut cumulative_cash_flow = -input.total_investment_reais; // Year 0 initial cash drop
     let mut total_25yr_savings = Decimal::ZERO;
     let mut payback_years = Decimal::from(-1);
 
     let base_panel_efficiency = Decimal::ONE;
     let degradation_factor = Decimal::from_str("0.005").unwrap();
 
-    // 5. Run the 25-Year Projection Loop
+    // 5. Run the 25‑Year Projection Loop
     for i in 1..=25 {
         let loop_year = current_year + i - 1;
 
         // Calculate efficiency degradation
         let efficiency_modifier =
             base_panel_efficiency - (degradation_factor * Decimal::from(i - 1));
-        let solar_irradiation_hsp = get_hsp_by_state(&input.location_state);
+        let solar_irradiation_hsp_future = get_hsp_by_state(&input.location_state);
 
         // Theoretical annual solar production
         let potential_yearly_generation_kwh = input.system_capacity_kwp
-            * solar_irradiation_hsp.await
+            * solar_irradiation_hsp_future.await
             * Decimal::from(30)
             * Decimal::from(12)
             * efficiency_modifier;
@@ -122,10 +134,10 @@ pub async fn calculate_solar_roi(input: SimulationInput) -> Result<SimulationRes
             Decimal::ZERO
         };
 
-        // Law 14.300: Get the transition rules for charging Fio B components
+        // Law 14.300: Get the transition rules for charging Fio B components
         let tax_percentage = legal_framework.get_distribution_charge_percentage(loop_year);
 
-        // Distribution cost (Fio B) charged exclusively over the compensated energy
+        // Distribution cost (Fio B) charged exclusively over the compensated energy
         let distribution_cost =
             actual_energy_compensated_kwh * distribution_tariff * tax_percentage;
 
@@ -134,7 +146,7 @@ pub async fn calculate_solar_roi(input: SimulationInput) -> Result<SimulationRes
 
         // New bill includes:
         // 1. Uncovered energy at full tariff
-        // 2. The legal framework tax for using the grid distribution (Fio B)
+        // 2. The legal framework tax for using the grid distribution (Fio B)
         // 3. Ensuring the consumer pays at least the availability minimum fee baseline
         let baseline_grid_cost = uncovered_yearly_kwh * total_tariff + distribution_cost;
         let minimum_payable_fee = availability_fee_yearly_kwh * total_tariff;
@@ -231,17 +243,6 @@ mod test {
         assert_eq!(result.annual_table[0].year, 2026);
         assert_eq!(result.annual_table[24].year, 2050);
     }
-
-    // #[tokio::test]
-    // async fn should_connect_to_aneel_api_successfully() {
-    //     let result = aneel_api::fetch_aneel_tariffs().await;
-
-    //     assert!(result.is_ok());
-
-    //     let json_payload = result.unwrap();
-    //     assert!(json_payload.contains("\"success\": true"));
-    // }
-    //
 
     #[tokio::test]
     async fn should_parse_real_residential_tariffs_from_es() {
